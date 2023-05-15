@@ -1,95 +1,83 @@
-import Image from 'next/image'
+"use client";
 import styles from './page.module.css'
+import WindowsSection from "./house/WindowSection";
+import DoorsSection from "./house/DoorSection";
+import {useEffect, useState} from "react";
 
-export default function Home() {
-  return (
-    <main className={styles.main}>
-      <div className={styles.description}>
-        <p>
-          Get started by editing&nbsp;
-          <code className={styles.code}>app/page.js</code>
-        </p>
-        <div>
-          <a
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            By{' '}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className={styles.vercelLogo}
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
-        </div>
-      </div>
+export default async function Home() {
+    const [windows, setWindows] = useState(["window1.png", "window2.webp", "window3.jpg"]);
+    const [doors, setDoors] = useState(["door3.jpg"]);
+    const [selectedWindow, setSelectedWindow] = useState(null);
+    const [selectedDoor, setSelectedDoor] = useState(null);
+    const [selectedImage, setSelectedImage] = useState(null);
 
-      <div className={styles.center}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
-      </div>
+    useEffect(() => {
+        alert("Please upload an image");
+    }, []);
 
-      <div className={styles.grid}>
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Docs <span>-&gt;</span>
-          </h2>
-          <p>Find in-depth information about Next.js features and API.</p>
-        </a>
+    const onWindowSelected = (window) => {
+        setSelectedWindow(window);
+    }
 
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Learn <span>-&gt;</span>
-          </h2>
-          <p>Learn about Next.js in an interactive course with&nbsp;quizzes!</p>
-        </a>
+    const onDoorSelected = (door) => {
+        setSelectedDoor(door);
+    }
 
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Templates <span>-&gt;</span>
-          </h2>
-          <p>Explore the Next.js 13 playground.</p>
-        </a>
+    const onFileUploaded = (e) => {
+        // save file in the selectedImage state
+        console.log("file", e.target.files[0]);
+        // setSelectedImage(e.target.files[0]);
+    }
 
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className={styles.card}
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2>
-            Deploy <span>-&gt;</span>
-          </h2>
-          <p>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
-  )
+    const onFormSend = () => {
+        if (!selectedImage) {
+            alert("Please select an image");
+            return;
+        }
+
+        if (!selectedWindow) {
+            alert("Please select a window");
+            return;
+        }
+
+        if (!selectedDoor) {
+            alert("Please select a door");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', selectedImage);
+
+        // send for data to /house with post
+        fetch("/house", {
+            method: "POST",
+            body: formData,
+            headers: {
+                "Content-Type": "multipart/form-data",
+                "Window": selectedWindow,
+                "Door": selectedDoor
+            }
+        }).then((res) => {
+            res.json().then((data) => {
+                console.log("data", data);
+                // setWindows(data.windows);
+                // setDoors(data.doors);
+            });
+        });
+    }
+
+    return (
+        <main className={styles.main}>
+            <div className={styles.uploadSection}>
+                Upload your image here (jpg, png):
+                <input type="file" onChange={onFileUploaded} name="image" accept="image/*" required/>
+                <div></div>
+                Choose the window that you like:
+                <WindowsSection windows={windows} onWindowSelected={onWindowSelected}/>
+                Choose the door that you like:
+                <DoorsSection doors={doors} onDoorSelected={onDoorSelected}/>
+                <button type="button" onClick={onFormSend}>Send</button>
+            </div>
+        </main>
+    );
 }
