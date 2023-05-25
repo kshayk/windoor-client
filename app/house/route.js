@@ -1,26 +1,45 @@
 import { NextResponse } from 'next/server';
 import fs from 'fs';
 import sharp from "sharp";
+import path from "path";
+const cloudinary = require('cloudinary');
 
-export async function POST(request: Request) {
+require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+
+// Replace with your Cloudinary API key and API secret
+cloudinary.config({
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME
+});
+
+export async function POST(request) {
     // get file binary from request
-    const file = await request.blob();
+    // const file = await request.blob();
 
-    // turn "file" into in image file that i can save in my system
-
+    // get image from request form data
+    const requestBody = await request.json();
+    const file = requestBody.image;
+    const door  = requestBody.door;
+    const window = requestBody.window;
 
     if (!file) {
         //return status code 400
         return NextResponse.json({ "success": false });
     }
 
+    // convert the base64 string to buffer with sharp
+
+    const base64Data = file.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
     // get file type
-    const fileType = file.type.split("/")[1];
+    const fileMetadata = await sharp(buffer).metadata();
+    const fileType = fileMetadata.format;
 
     const tempFileName = `${Math.random().toString(36).substring(7)}.${fileType}`;
-    const buffer = await file.arrayBuffer();
 
-    fs.writeFile(`tmp/${tempFileName}`, Buffer.from(buffer), (err) => {
+    fs.writeFile(`tmp/${tempFileName}`, buffer, (err) => {
         if (err) throw err;
         console.log('Image saved!');
     });
@@ -28,7 +47,7 @@ export async function POST(request: Request) {
     // send the file to localhost:80/image
     let imageRes = await fetch("http://localhost:80/image", {
         method: "POST",
-        body: file,
+        body: buffer,
         headers: {
             "Content-Type": `image/${fileType}`
         }
@@ -36,12 +55,11 @@ export async function POST(request: Request) {
 
     imageRes = await imageRes.json();
 
-    const houseImage = sharp(`tmp/${tempFileName}`).toFormat('png');
+    const houseImage = sharp(`tmp/${tempFileName}`).toFormat('jpeg');
     const imageMetadata = await houseImage.metadata();
     const mainImageWidth = imageMetadata.width ?? 0;
     const mainImageHeight = imageMetadata.height ?? 0;
 
-    // @ts-ignore
     let predictions = imageRes.predictions.filter((prediction) => {
         if (prediction.probability > 0.5) {
             return prediction;
@@ -56,22 +74,34 @@ export async function POST(request: Request) {
         }
     });
 
-    compositeImage(predictions).then((compositeImages) => {
-        let outputFileName = `${Math.random().toString(36).substring(7)}.png`;
-        houseImage.composite(compositeImages).toFile(`public/output/output_${outputFileName}`).then(() => {
-            console.log('done');
-        });
+    const resultImage = await compositeImage(predictions, window, door);
+
+    const  outputFileName = `${Math.random().toString(36).substring(7)}.png`;
+    const resultImageFilePath = `public/output/output_${outputFileName}`;
+    await houseImage.composite(resultImage).toFile(resultImageFilePath);
+
+    const cloudinaryRes = await uploadImage(resultImageFilePath, outputFileName);
+
+    // delete the file from tmp folder
+    fs.unlink(`tmp/${tempFileName}`, (err) => {
+        if (err) throw err;
+        console.log('Image deleted!');
+    });
+
+    fs.unlink(resultImageFilePath, (err) => {
+        if (err) throw err;
+        console.log('Image deleted!');
     });
 
     console.log("my predictions", predictions);
 
-    return NextResponse.json({ "success": true });
+    return NextResponse.json({ "success": true, img_url: cloudinaryRes.secure_url });
 }
 
-async function compositeImage(predictions ) {
+async function compositeImage(predictions, windowName, doorName) {
     let compositeImages = [];
     for (const prediction of predictions) {
-        let inputImageName = (prediction.tagName === 'window' ? 'public/windows/window3.jpg' : 'public/doors/door3.jpg');
+        let inputImageName = (prediction.tagName === 'window' ? `public/windows/${windowName}` : `public/doors/${doorName}`);
         let inputImage = await sharp(inputImageName).resize(Math.round(prediction.width), Math.round(prediction.height), { fit: 'fill', withoutEnlargement: true } ).toFormat('png').toBuffer();
         let left = Math.round(prediction.left);
         let top = Math.round(prediction.top);
@@ -80,3 +110,17 @@ async function compositeImage(predictions ) {
 
     return compositeImages;
 }
+
+async function uploadImage(imgUrl, fileName) {
+    // Upload the file to Cloudinary
+    return new Promise((resolve, reject) => {
+        cloudinary.v2.uploader.upload(imgUrl, {resource_type: "image", folder:"windoor", public_id: `${fileName}`}, (error, result) => {
+            if (error) {
+                reject(error);
+            } else {
+                resolve(result);
+            }
+        });
+    });
+}
+

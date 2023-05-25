@@ -1,4 +1,4 @@
-export default async function WindowBox(props) {
+export default function WindowBox(props) {
     let imgPath = `/windows/${props.imgName}`;
 
     const setWindowState = (event) => {

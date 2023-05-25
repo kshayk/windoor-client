@@ -1,4 +1,4 @@
-export default async function DoorBox(props) {
+export default function DoorBox(props) {
     let imgPath = `/doors/${props.imgName}`;
 
     const setDoorState = (event) => {
