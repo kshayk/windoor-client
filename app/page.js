@@ -4,12 +4,15 @@ import WindowsSection from "./house/WindowSection";
 import DoorsSection from "./house/DoorSection";
 import {useEffect, useRef, useState} from "react";
 import Image from "next/image";
+import ReactImageAnnotate from "react-image-annotate"
 
 export default function Home() {
     const [windows, setWindows] = useState(["window1.png", "window2.webp", "window3.jpg"]);
     const [doors, setDoors] = useState(["door3.jpg"]);
     const [imgUrl, setImgUrl] = useState("");
     const [prevImgUrl, setPrevImgUrl] = useState("");
+    const [predictedAreas, setPredictedAreas] = useState(null);
+    const [imgTempName, setImgTempName] = useState(null);
     // const [selectedWindow, setSelectedWindow] = useState("");
     // const [selectedDoor, setSelectedDoor] = useState("");
     // const [selectedImage, setSelectedImage] = useState("");
@@ -57,21 +60,48 @@ export default function Home() {
         // convert selected image to base64 in the next line
 
         // send for data to /house with post
-        fetch("/house", {
-            method: "POST",
+        // fetch("/house", {
+        //     method: "POST",
+        //     body: JSON.stringify({
+        //         "image": selectedImage.current,
+        //         "window": selectedWindow.current,
+        //         "door": selectedDoor.current
+        //     })
+        // }).then((res) => {
+        //     res.json().then((data) => {
+        //         setPrevImgUrl(imgUrl);
+        //         setImgUrl(data.img_url);
+        //         // setWindows(data.windows);
+        //         // setDoors(data.doors);
+        //     });
+        // });
+
+        fetch('/house/prediction-areas', {
+            method: 'POST',
             body: JSON.stringify({
                 "image": selectedImage.current,
                 "window": selectedWindow.current,
                 "door": selectedDoor.current
             })
         }).then((res) => {
-            res.json().then((data) => {
-                setPrevImgUrl(imgUrl);
-                setImgUrl(data.img_url);
-                // setWindows(data.windows);
-                // setDoors(data.doors);
-            });
-        });
+                res.json().then((data) => {
+                    setImgTempName(data.tempFileName);
+                    setPredictedAreas(data.predictions.map(prediction => {
+                        return {
+                            "cls": prediction.tagName,
+                            "color": "#eed50d",
+                            "id": Math.random() * 1000,
+                            "type": "box",
+                            "x": prediction.left,
+                            "y": prediction.top,
+                            "w": prediction.width,
+                            "h": prediction.height,
+                            "editingLabels": false
+                        }
+                    }));
+                });
+            }
+        )
     }
 
     const onImgClicked = () => {
@@ -80,19 +110,62 @@ export default function Home() {
         setImgUrl(prevImg);
     }
 
+    const uploadImagePredictions = (data) => {
+        console.log(data);
+        const predictionData = data.images[0].regions.map(region => {
+            return {
+                "tagName": region.cls.toLowerCase(),
+                "left": region.x,
+                "top": region.y,
+                "width": region.w,
+                "height": region.h
+            }
+        });
+
+        fetch('/house/generate-image', {
+            method: 'POST',
+            body: JSON.stringify({
+                "image": imgTempName,
+                "window": selectedWindow.current,
+                "door": selectedDoor.current,
+                "predictions": predictionData
+            })
+        }).then((res) => {
+                res.json().then((data) => {
+                    setImgUrl(data.img_url);
+                    setPredictedAreas(null);
+                });
+            }
+        );
+    }
+
     return (
-        <main className={styles.main}>
-            <div className={styles.uploadSection}>
-                Upload your image here (jpg, png):
-                <input type="file" onChange={onFileUploaded} name="image" accept="image/*" required/>
-                <div></div>
-                {imgUrl && <Image src={imgUrl} onClick={onImgClicked} width={500} height={500}/>}
-                Choose the window that you like:
-                <WindowsSection windows={windows} onWindowSelected={onWindowSelected}/>
-                Choose the door that you like:
-                <DoorsSection doors={doors} onDoorSelected={onDoorSelected}/>
-                <button type="button" onClick={onFormSend}>Send</button>
-            </div>
-        </main>
+        <>
+            {!predictedAreas && <main className={styles.main}>
+                <div className={styles.uploadSection}>
+                    Upload your image here (jpg, png):
+                    <input type="file" onChange={onFileUploaded} name="image" accept="image/*" required/>
+                    <div></div>
+                    {imgUrl && <Image src={imgUrl} alt={imgUrl} width={700} height={500}/>}
+                    Choose the window that you like:
+                    <WindowsSection windows={windows} onWindowSelected={onWindowSelected}/>
+                    Choose the door that you like:
+                    <DoorsSection doors={doors} onDoorSelected={onDoorSelected}/>
+                    <button type="button" onClick={onFormSend}>Send</button>
+                </div>
+            </main>}
+            {predictedAreas && <main>
+                <ReactImageAnnotate
+                    labelImages={false}
+                    regionClsList={["Window", "Door"]}
+                    regionTagList={["Window", "Door"]}
+                    images={[{src: imgUrl, regions: predictedAreas}]}
+                    enabledTools={["create-box"]}
+                    onExit={(data) => {
+                        uploadImagePredictions(data);
+                    }}
+                />
+            </main>}
+        </>
     );
 }
